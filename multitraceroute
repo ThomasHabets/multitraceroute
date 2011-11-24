@@ -1,0 +1,138 @@
+#!/usr/bin/python
+
+import time
+import sys
+from threading import Thread
+from scapy import all as scapy
+
+def mkudp(ttl):
+  eth = scapy.Ether()
+  ip = scapy.IP(dst=target)
+  ip.ttl = ttl
+
+  udp = scapy.UDP()
+  udp.dport=12345+ttl
+  packet = eth/ip/udp
+  return packet
+
+def mktcp(ttl):
+  eth = scapy.Ether()
+  ip = scapy.IP(
+      dst=target,
+      ttl=ttl)
+
+  tcp = scapy.TCP(
+      dport=12345+ttl)
+  packet = eth/ip/tcp
+  return packet
+
+def mkicmp(ttl):
+  eth = scapy.Ether()
+  ip = scapy.IP(
+      dst=target,
+      ttl=ttl)
+
+  icmp = scapy.ICMP(
+      type=8,
+      code=0,
+      id=ttl)
+  packet = eth/ip/icmp
+  return packet
+
+def sendit(ttl, answers):
+  packet = mkpacket(ttl)
+  ans, unans = scapy.sr(packet, timeout=1,verbose=0)
+  answers.extend(ans)
+
+def traceroute():
+  global target
+  target = sys.argv[1]
+  answers = []
+  packets = []
+  for ttl in range(1,30):
+    packets.append(mkudp(ttl))
+    packets.append(mktcp(ttl))
+    packets.append(mkicmp(ttl))
+  dups = 3
+  answers,unans = scapy.srp(packets * dups, timeout=1, verbose=0)
+  verbose = 0
+  if verbose:
+    print "--- Results %d ---" % len(answers)
+  answers.extend([(x,None) for x in unans])
+  answers = list(sorted(answers,
+                        key=lambda x: x[0].getlayer('IP').ttl))
+
+  protos = [
+      [x for x in answers
+       if isinstance(x[0].payload.payload, scapy.TCP)],
+      [x for x in answers
+       if isinstance(x[0].payload.payload, scapy.UDP)],
+      [x for x in answers
+       if isinstance(x[0].payload.payload, scapy.ICMP)],
+      ]
+
+  # ugly hack to remove dups
+  newprotos = []
+  for proto in protos:
+    m = {}
+    cur = 0
+    for snd, rcv in proto[-1::-1]:
+      ttl = snd.getlayer('IP').ttl
+      m[ttl] = snd,rcv
+    newproto = []
+    for ttl in sorted(m):
+      newproto.append(m[ttl])
+    newprotos.append(newproto)
+  protos = newprotos
+
+  # for every ttl
+  fmt = "%15s %-7s  "
+  for ttl, answers in enumerate(zip(*protos), 1):
+    sends, replies = zip(*answers)
+    snd = sends[0]
+
+    line = ""
+    done = set()
+
+    # for every protocol there should be a reply
+    for reply in replies:
+      if reply is None:
+        src = '*'
+        s = ''
+      elif isinstance(reply.payload.payload, scapy.ICMP):
+        type = reply.getlayer('ICMP').type
+        code = reply.getlayer('ICMP').code
+        src = reply.getlayer('IP').src
+        if (type,code) == (11,0):
+          s = 'TTL'
+        else:
+          s = "I %d/%d" %(type, code)
+        if (type,code) == (0,0):
+          done.add('ICMP')
+        elif (type,code) in [(3,3), (3,13)]:
+          done.add('UDP')
+      elif isinstance(reply.payload.payload, scapy.UDP):
+        src = reply.getlayer('IP').src
+        s = 'UDP'
+      elif isinstance(reply.payload.payload, scapy.TCP):
+        src = reply.getlayer('IP').src
+        s = 'TCP/' + repr(reply.getlayer('TCP').flags)
+        if reply.getlayer('TCP').flags == 20:
+          done.add('TCP')
+      else:
+        src = reply.getlayer('IP').src
+        s = "Unknown"
+
+      line += fmt % (src, s)
+
+    print ("%-2d %s" % (ttl, line)).strip()
+    if len(done) == len(replies):
+      break
+
+def main():
+  t = time.time()
+  traceroute()
+  print "-- Total time: %.3fs" % (time.time() - t)
+
+if __name__ == '__main__':
+  main()
