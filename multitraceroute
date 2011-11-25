@@ -49,11 +49,19 @@ def traceroute():
   target = sys.argv[1]
   answers = []
   packets = []
-  for ttl in range(1,30):
-    packets.append(mkudp(ttl))
-    packets.append(mktcp(ttl))
-    packets.append(mkicmp(ttl))
+
+  # options
+  opt_protos = [scapy.TCP, scapy.UDP, scapy.ICMP]
   dups = 3
+
+  for ttl in range(1,30):
+    if scapy.UDP in opt_protos:
+      packets.append(mkudp(ttl))
+    if scapy.TCP in opt_protos:
+      packets.append(mktcp(ttl))
+    if scapy.ICMP in opt_protos:
+      packets.append(mkicmp(ttl))
+
   answers,unans = scapy.srp(packets * dups, timeout=1, verbose=0)
   verbose = 0
   if verbose:
@@ -62,14 +70,11 @@ def traceroute():
   answers = list(sorted(answers,
                         key=lambda x: x[0].getlayer('IP').ttl))
 
-  protos = [
-      [x for x in answers
-       if isinstance(x[0].payload.payload, scapy.TCP)],
-      [x for x in answers
-       if isinstance(x[0].payload.payload, scapy.UDP)],
-      [x for x in answers
-       if isinstance(x[0].payload.payload, scapy.ICMP)],
-      ]
+  protos = []
+  for proto in opt_protos:
+    protos.append([x for x in answers
+                   if isinstance(x[0].payload.payload, proto)])
+
 
   # ugly hack to remove dups
   newprotos = []
