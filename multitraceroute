@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import time
 import sys
@@ -65,7 +65,7 @@ def traceroute():
   answers,unans = scapy.srp(packets * dups, timeout=1, verbose=0)
   verbose = 0
   if verbose:
-    print "--- Results %d ---" % len(answers)
+    print("--- Results %d ---" % len(answers))
   answers.extend([(x,None) for x in unans])
   answers = list(sorted(answers,
                         key=lambda x: x[0].getlayer('IP').ttl))
@@ -130,14 +130,14 @@ def traceroute():
 
       line += fmt % (src, s)
 
-    print ("%-2d %s" % (ttl, line)).strip()
+    print(("%-2d %s" % (ttl, line)).strip())
     if len(done) == len(replies):
       break
 
 def main():
   t = time.time()
   traceroute()
-  print "-- Total time: %.3fs" % (time.time() - t)
+  print("-- Total time: %.3fs" % (time.time() - t))
 
 if __name__ == '__main__':
   main()
